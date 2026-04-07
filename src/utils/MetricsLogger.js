@@ -1,5 +1,5 @@
 /**
- * MetricsLogger.js — AirDraw
+ * MetricsLogger.js — ShadowDraw
  * ─────────────────────────────────────────────────────────────────────
  * Research-grade session metrics and gesture accuracy logging.
  * Tracks real-time stats and provides a structured export for analysis.
@@ -48,21 +48,32 @@ export class MetricsLogger {
       const rawFps = (this._frameCount * 1000) / elapsed;
       this._fpsBuffer.push(rawFps);
       if (this._fpsBuffer.length > this._fpsBufferSize) this._fpsBuffer.shift();
-      this._currentFps = this._fpsBuffer.reduce((a, b) => a + b, 0) / this._fpsBuffer.length;
+      this._currentFps =
+        this._fpsBuffer.reduce((a, b) => a + b, 0) / this._fpsBuffer.length;
       this._frameCount = 0;
       this._lastFpsTime = now;
     }
   }
 
-  get fps() { return Math.round(this._currentFps); }
+  get fps() {
+    return Math.round(this._currentFps);
+  }
 
   /* ── Strokes & Points ── */
 
-  incrementStrokes() { this._strokeCount++; }
-  incrementPoints(n = 1) { this._totalPoints += n; }
+  incrementStrokes() {
+    this._strokeCount++;
+  }
+  incrementPoints(n = 1) {
+    this._totalPoints += n;
+  }
 
-  get strokeCount() { return this._strokeCount; }
-  get totalPoints() { return this._totalPoints; }
+  get strokeCount() {
+    return this._strokeCount;
+  }
+  get totalPoints() {
+    return this._totalPoints;
+  }
 
   /* ── Gesture Tracking ── */
 
@@ -80,8 +91,12 @@ export class MetricsLogger {
     }
   }
 
-  get gestureChanges() { return this._gestureChanges; }
-  get gestureCounts() { return { ...this._gestureCounts }; }
+  get gestureChanges() {
+    return this._gestureChanges;
+  }
+  get gestureCounts() {
+    return { ...this._gestureCounts };
+  }
 
   /* ── Confidence ── */
 

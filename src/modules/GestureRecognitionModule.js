@@ -1,5 +1,5 @@
 /**
- * GestureRecognitionModule.js — AirDraw
+ * GestureRecognitionModule.js — ShadowDraw
  * ─────────────────────────────────────────────────────────────────────
  * Classifies hand landmarks into discrete gestures:
  *   - PINCH:    thumb + index finger close together → draw mode

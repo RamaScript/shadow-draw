@@ -1,5 +1,5 @@
 /**
- * main.js — AirDraw Entry Point
+ * main.js — ShadowDraw Entry Point
  * ─────────────────────────────────────────────────────────────────────
  * Application orchestrator using a clean MVC-inspired architecture.
  *
@@ -18,46 +18,49 @@
  * ─────────────────────────────────────────────────────────────────────
  */
 
-import { CameraModule }            from './modules/CameraModule.js';
-import { HandTrackingModule }      from './modules/HandTrackingModule.js';
-import { GestureRecognitionModule, Gesture } from './modules/GestureRecognitionModule.js';
-import { DrawingEngine }           from './modules/DrawingEngine.js';
-import { UILayer }                 from './modules/UILayer.js';
-import { MetricsLogger }           from './utils/MetricsLogger.js';
-import { createFilter, FilterTypes } from './utils/SmoothingFilters.js';
-import { formatTime }              from './utils/MathUtils.js';
+import { CameraModule } from "./modules/CameraModule.js";
+import { HandTrackingModule } from "./modules/HandTrackingModule.js";
+import {
+  GestureRecognitionModule,
+  Gesture,
+} from "./modules/GestureRecognitionModule.js";
+import { DrawingEngine } from "./modules/DrawingEngine.js";
+import { UILayer } from "./modules/UILayer.js";
+import { MetricsLogger } from "./utils/MetricsLogger.js";
+import { createFilter, FilterTypes } from "./utils/SmoothingFilters.js";
+import { formatTime } from "./utils/MathUtils.js";
 
 /* ══════════════════════════════════════════════════════════
-   AirDrawApp — Top-level application controller
+   ShadowDrawApp — Top-level application controller
    ══════════════════════════════════════════════════════════ */
-class AirDrawApp {
+class ShadowDrawApp {
   constructor() {
     // DOM references
-    this._videoEl  = document.getElementById('webcam-video');
-    this._canvasEl = document.getElementById('drawing-canvas');
-    this._app      = document.getElementById('app');
-    this._splash   = document.getElementById('splash-screen');
+    this._videoEl = document.getElementById("webcam-video");
+    this._canvasEl = document.getElementById("drawing-canvas");
+    this._app = document.getElementById("app");
+    this._splash = document.getElementById("splash-screen");
 
     // Module instances
-    this._camera    = new CameraModule(this._videoEl);
-    this._tracking  = new HandTrackingModule({ modelComplexity: 1 });
-    this._gesture   = new GestureRecognitionModule();
-    this._drawing   = new DrawingEngine(this._canvasEl);
-    this._ui        = new UILayer();
-    this._metrics   = new MetricsLogger();
+    this._camera = new CameraModule(this._videoEl);
+    this._tracking = new HandTrackingModule({ modelComplexity: 1 });
+    this._gesture = new GestureRecognitionModule();
+    this._drawing = new DrawingEngine(this._canvasEl);
+    this._ui = new UILayer();
+    this._metrics = new MetricsLogger();
 
     // Active smoothing filter (swappable at runtime)
-    this._filter    = createFilter(FilterTypes.MOVING_AVG);
+    this._filter = createFilter(FilterTypes.MOVING_AVG);
     this._smoothType = FilterTypes.MOVING_AVG;
 
     // Application state
-    this._prevGesture     = Gesture.UNKNOWN;
-    this._handVisible     = false;
+    this._prevGesture = Gesture.UNKNOWN;
+    this._handVisible = false;
     this._metricsInterval = null;
 
     // Frame timing
     this._lastFrameTime = 0;
-    this._rafId         = null;
+    this._rafId = null;
   }
 
   /* ─────────────────────────────
@@ -67,42 +70,46 @@ class AirDrawApp {
   /** Initialize the entire system. Called from splash screen. */
   async boot() {
     // Show app, hide splash
-    this._splash.style.display  = 'none';
-    this._app.classList.remove('hidden');
+    this._splash.style.display = "none";
+    this._app.classList.remove("hidden");
 
     // Set up UI callbacks before anything else
     this._wireUICallbacks();
     this._ui.init();
 
     // Loading stage 1: Camera
-    this._ui.setLoadingText('Requesting camera access…');
+    this._ui.setLoadingText("Requesting camera access…");
     this._ui.setLoadingProgress(10);
 
     await this._startCamera();
 
     // Loading stage 2: MediaPipe
-    this._ui.setLoadingText('Loading MediaPipe Hands model…');
+    this._ui.setLoadingText("Loading MediaPipe Hands model…");
     this._ui.setLoadingProgress(35);
 
     await this._startTracking();
 
     // Loading stage 3: Canvas
-    this._ui.setLoadingText('Initializing drawing engine…');
+    this._ui.setLoadingText("Initializing drawing engine…");
     this._ui.setLoadingProgress(80);
     this._drawing.resize();
 
     // Loading stage 4: Done
     this._ui.setLoadingProgress(100);
-    this._ui.setLoadingText('System ready!');
+    this._ui.setLoadingText("System ready!");
 
     setTimeout(() => {
       this._ui.hideLoading();
       this._startMetricsLoop();
-      this._ui.toast('System ready — raise your hand to begin!', 'success', 3000);
+      this._ui.toast(
+        "System ready — raise your hand to begin!",
+        "success",
+        3000,
+      );
     }, 400);
 
     // Resize canvas on window resize
-    window.addEventListener('resize', () => {
+    window.addEventListener("resize", () => {
       this._drawing.resize();
     });
   }
@@ -115,7 +122,7 @@ class AirDrawApp {
     return new Promise((resolve) => {
       this._camera.onReady = resolve;
       this._camera.onError = (msg, err) => {
-        console.error('[Camera]', err);
+        console.error("[Camera]", err);
         this._ui.hideLoading();
         this._ui.showCameraError(msg, () => window.location.reload());
       };
@@ -130,16 +137,16 @@ class AirDrawApp {
   async _startTracking() {
     return new Promise(async (resolve) => {
       this._tracking.onReady = () => {
-        console.log('[HandTracking] Model ready');
+        console.log("[HandTracking] Model ready");
         resolve();
       };
 
       this._tracking.onError = (err) => {
-        console.error('[HandTracking] Error:', err);
+        console.error("[HandTracking] Error:", err);
         this._ui.hideLoading();
         this._ui.showCameraError(
-          'Failed to initialize MediaPipe Hands. Check your internet connection.',
-          () => window.location.reload()
+          "Failed to initialize MediaPipe Hands. Check your internet connection.",
+          () => window.location.reload(),
         );
       };
 
@@ -255,7 +262,7 @@ class AirDrawApp {
   _triggerClear() {
     this._drawing.clear();
     this._filter.reset();
-    this._ui.toast('Canvas cleared', 'info', 1500);
+    this._ui.toast("Canvas cleared", "info", 1500);
     this._ui.setUndoEnabled(this._drawing.canUndo);
   }
 
@@ -275,20 +282,21 @@ class AirDrawApp {
     this._ui.onSmoothChange = (type) => {
       this._smoothType = type;
       this._filter = createFilter(type);
-      this._ui.toast(`Smoothing: ${type}`, 'info', 1500);
+      this._ui.toast(`Smoothing: ${type}`, "info", 1500);
     };
 
     this._ui.onDynamicToggle = (enabled) => {
       this._drawing.dynamicWidth = enabled;
       this._ui.toast(
-        enabled ? 'Dynamic stroke ON' : 'Dynamic stroke OFF',
-        'info', 1500
+        enabled ? "Dynamic stroke ON" : "Dynamic stroke OFF",
+        "info",
+        1500,
       );
     };
 
     this._ui.onUndo = () => {
       if (this._drawing.undo()) {
-        this._ui.toast('Undo', 'info', 1000);
+        this._ui.toast("Undo", "info", 1000);
         this._ui.setUndoEnabled(this._drawing.canUndo);
         this._ui.setRedoEnabled(this._drawing.canRedo);
       }
@@ -296,7 +304,7 @@ class AirDrawApp {
 
     this._ui.onRedo = () => {
       if (this._drawing.redo()) {
-        this._ui.toast('Redo', 'info', 1000);
+        this._ui.toast("Redo", "info", 1000);
         this._ui.setUndoEnabled(this._drawing.canUndo);
         this._ui.setRedoEnabled(this._drawing.canRedo);
       }
@@ -309,7 +317,7 @@ class AirDrawApp {
     this._ui.onSave = () => {
       const filename = `airdraw-${Date.now()}.png`;
       this._drawing.saveAsPNG(filename);
-      this._ui.toast('Saved as PNG!', 'success', 2000);
+      this._ui.toast("Saved as PNG!", "success", 2000);
     };
   }
 
@@ -321,11 +329,11 @@ class AirDrawApp {
   _startMetricsLoop() {
     this._metricsInterval = setInterval(() => {
       this._ui.updateMetrics({
-        strokes:     this._metrics.strokeCount,
-        points:      this._metrics.totalPoints,
-        gestures:    this._metrics.gestureChanges,
-        confidence:  this._metrics.avgConfidence ?? '--',
-        smooth:      this._smoothType,
+        strokes: this._metrics.strokeCount,
+        points: this._metrics.totalPoints,
+        gestures: this._metrics.gestureChanges,
+        confidence: this._metrics.avgConfidence ?? "--",
+        smooth: this._smoothType,
         sessionTime: formatTime(this._metrics.sessionDurationMs),
       });
     }, 1000);
@@ -336,10 +344,10 @@ class AirDrawApp {
    BOOT: Wire splash screen → app launch
    ══════════════════════════════════════════════════════════ */
 
-const app = new AirDrawApp();
+const app = new ShadowDrawApp();
 
-document.getElementById('launch-btn')?.addEventListener('click', () => {
-  app.boot().catch(err => {
-    console.error('[AirDraw] Boot failed:', err);
+document.getElementById("launch-btn")?.addEventListener("click", () => {
+  app.boot().catch((err) => {
+    console.error("[ShadowDraw] Boot failed:", err);
   });
 });

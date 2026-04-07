@@ -1,5 +1,5 @@
 /**
- * MathUtils.js — AirDraw
+ * MathUtils.js — ShadowDraw
  * ─────────────────────────────────────────────────────────────────────
  * Pure math utilities for interpolation, distance calculations, and
  * geometric helpers used throughout the drawing and gesture modules.
@@ -110,5 +110,5 @@ export function formatTime(ms) {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }

@@ -1,5 +1,5 @@
 /**
- * HandTrackingModule.js — AirDraw
+ * HandTrackingModule.js — ShadowDraw
  * ─────────────────────────────────────────────────────────────────────
  * MediaPipe Hands integration layer.
  * Wraps the MediaPipe Hands solution with clean initialization,
@@ -26,21 +26,21 @@ export class HandTrackingModule {
    */
   constructor(opts = {}) {
     this._opts = {
-      maxHands:         opts.maxHands        ?? 1,
+      maxHands: opts.maxHands ?? 1,
       minDetectionConf: opts.minDetectionConf ?? 0.75,
-      minTrackingConf:  opts.minTrackingConf  ?? 0.60,
-      modelComplexity:  opts.modelComplexity  ?? 1,
+      minTrackingConf: opts.minTrackingConf ?? 0.6,
+      modelComplexity: opts.modelComplexity ?? 1,
     };
 
-    this._hands = null;      // MediaPipe Hands instance
-    this._camera = null;     // MediaPipe Camera wrapper
+    this._hands = null; // MediaPipe Hands instance
+    this._camera = null; // MediaPipe Camera wrapper
     this._isReady = false;
     this._lastResult = null; // Most recent detection result
 
     /** Callbacks — set externally */
-    this.onResults = null;   // (result) => void
-    this.onReady   = null;   // () => void
-    this.onError   = null;   // (err) => void
+    this.onResults = null; // (result) => void
+    this.onReady = null; // () => void
+    this.onError = null; // (err) => void
   }
 
   /* ─────────────────────────────
@@ -55,8 +55,8 @@ export class HandTrackingModule {
   async init(videoEl) {
     try {
       // Guard: MediaPipe must be loaded via CDN
-      if (typeof Hands === 'undefined') {
-        throw new Error('MediaPipe Hands not loaded. Check CDN script tags.');
+      if (typeof Hands === "undefined") {
+        throw new Error("MediaPipe Hands not loaded. Check CDN script tags.");
       }
 
       this._hands = new Hands({
@@ -65,11 +65,11 @@ export class HandTrackingModule {
       });
 
       this._hands.setOptions({
-        maxNumHands:              this._opts.maxHands,
-        minDetectionConfidence:   this._opts.minDetectionConf,
-        minTrackingConfidence:    this._opts.minTrackingConf,
-        modelComplexity:          this._opts.modelComplexity,
-        selfieMode:               true, // mirror landmark coordinates
+        maxNumHands: this._opts.maxHands,
+        minDetectionConfidence: this._opts.minDetectionConf,
+        minTrackingConfidence: this._opts.minTrackingConf,
+        modelComplexity: this._opts.modelComplexity,
+        selfieMode: true, // mirror landmark coordinates
       });
 
       // Wire up results callback
@@ -84,7 +84,7 @@ export class HandTrackingModule {
           if (!this._isReady) return;
           await this._hands.send({ image: videoEl });
         },
-        width:  1280,
+        width: 1280,
         height: 720,
       });
 
@@ -95,10 +95,9 @@ export class HandTrackingModule {
 
       // Start frame capture loop
       await this._camera.start();
-
     } catch (err) {
       this.onError?.(err);
-      console.error('[HandTracking] Init failed:', err);
+      console.error("[HandTracking] Init failed:", err);
     }
   }
 
@@ -115,27 +114,27 @@ export class HandTrackingModule {
 
   /** Landmark index constants for readability */
   static LM = {
-    WRIST:              0,
-    THUMB_CMC:          1,
-    THUMB_MCP:          2,
-    THUMB_IP:           3,
-    THUMB_TIP:          4,
-    INDEX_MCP:          5,
-    INDEX_PIP:          6,
-    INDEX_DIP:          7,
-    INDEX_TIP:          8,
-    MIDDLE_MCP:         9,
-    MIDDLE_PIP:        10,
-    MIDDLE_DIP:        11,
-    MIDDLE_TIP:        12,
-    RING_MCP:          13,
-    RING_PIP:          14,
-    RING_DIP:          15,
-    RING_TIP:          16,
-    PINKY_MCP:         17,
-    PINKY_PIP:         18,
-    PINKY_DIP:         19,
-    PINKY_TIP:         20,
+    WRIST: 0,
+    THUMB_CMC: 1,
+    THUMB_MCP: 2,
+    THUMB_IP: 3,
+    THUMB_TIP: 4,
+    INDEX_MCP: 5,
+    INDEX_PIP: 6,
+    INDEX_DIP: 7,
+    INDEX_TIP: 8,
+    MIDDLE_MCP: 9,
+    MIDDLE_PIP: 10,
+    MIDDLE_DIP: 11,
+    MIDDLE_TIP: 12,
+    RING_MCP: 13,
+    RING_PIP: 14,
+    RING_DIP: 15,
+    RING_TIP: 16,
+    PINKY_MCP: 17,
+    PINKY_PIP: 18,
+    PINKY_DIP: 19,
+    PINKY_TIP: 20,
   };
 
   /**
@@ -176,6 +175,10 @@ export class HandTrackingModule {
     return result.multiHandedness[0]?.score ?? null;
   }
 
-  get isReady()     { return this._isReady; }
-  get lastResult()  { return this._lastResult; }
+  get isReady() {
+    return this._isReady;
+  }
+  get lastResult() {
+    return this._lastResult;
+  }
 }

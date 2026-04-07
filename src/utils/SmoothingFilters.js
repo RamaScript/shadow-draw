@@ -1,5 +1,5 @@
 /**
- * SmoothingFilters.js — AirDraw
+ * SmoothingFilters.js — ShadowDraw
  * ─────────────────────────────────────────────────────────────────────
  * Implements multiple smoothing strategies for hand tracking coordinates.
  * Research comparison: Moving Average vs. Kalman Filter vs. Raw input.
