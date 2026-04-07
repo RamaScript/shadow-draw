@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AirDraw — Gesture-Based Air Drawing System</title>
+    <link rel="stylesheet" href="styles.css" />
+
+    <!-- MediaPipe Hands CDN (stable) -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <!-- ═══════════════════════════ SPLASH SCREEN ═══════════════════════════ -->
+    <div id="splash-screen">
+      <div class="splash-content">
+        <div class="splash-logo">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+            <path
+              d="M32 4 L32 60"
+              stroke="var(--accent)"
+              stroke-width="1"
+              stroke-dasharray="4 4"
+              opacity="0.3"
+            />
+            <path
+              d="M4 32 L60 32"
+              stroke="var(--accent)"
+              stroke-width="1"
+              stroke-dasharray="4 4"
+              opacity="0.3"
+            />
+            <circle
+              cx="32"
+              cy="32"
+              r="20"
+              stroke="var(--accent)"
+              stroke-width="1.5"
+              fill="none"
+            />
+            <circle cx="32" cy="12" r="4" fill="var(--accent)" />
+            <path
+              d="M32 16 Q44 22 48 32 Q44 42 32 48 Q20 42 16 32 Q20 22 32 16Z"
+              stroke="var(--accent-2)"
+              stroke-width="1"
+              fill="none"
+              opacity="0.5"
+            />
+            <circle cx="32" cy="32" r="3" fill="var(--accent-2)" />
+          </svg>
+        </div>
+        <h1 class="splash-title">AirDraw</h1>
+        <p class="splash-sub">Real-Time Hand Gesture Drawing System</p>
+        <div class="splash-meta">
+          M.Tech Final Year Project · Computer Vision · 2024
+        </div>
+        <button id="launch-btn" class="btn-launch">
+          <span>Initialize System</span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M3 8h10M9 4l4 4-4 4"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+        <div class="splash-note">Requires webcam access · Best in Chrome</div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════ MAIN APP ═══════════════════════════ -->
+    <div id="app" class="hidden">
+      <!-- Header -->
+      <header id="app-header">
+        <div class="header-left">
+          <div class="logo-mark">
+            <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+              <circle
+                cx="14"
+                cy="14"
+                r="12"
+                stroke="var(--accent)"
+                stroke-width="1.5"
+                fill="none"
+              />
+              <circle cx="14" cy="6" r="2.5" fill="var(--accent)" />
+              <circle cx="14" cy="14" r="2" fill="var(--accent-2)" />
+            </svg>
+          </div>
+          <span class="app-title">AirDraw</span>
+          <span class="app-version">v1.0</span>
+        </div>
+
+        <div class="header-center">
+          <!-- Gesture Status Indicator -->
+          <div id="gesture-badge" class="gesture-badge">
+            <span class="gesture-dot"></span>
+            <span id="gesture-label">Initializing…</span>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <div id="fps-counter" class="stat-chip">
+            <span class="stat-label">FPS</span>
+            <span id="fps-value">--</span>
+          </div>
+          <div id="confidence-chip" class="stat-chip">
+            <span class="stat-label">CONF</span>
+            <span id="confidence-value">--</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Canvas Area -->
+      <main id="canvas-area">
+        <!-- Video Feed (hidden behind canvas) -->
+        <video id="webcam-video" autoplay playsinline muted></video>
+
+        <!-- Drawing Canvas (full overlay) -->
+        <canvas id="drawing-canvas"></canvas>
+
+        <!-- Cursor dot overlay -->
+        <div id="draw-cursor" class="draw-cursor hidden"></div>
+
+        <!-- ─── Instructions Panel (top-right) ─── -->
+        <aside id="instructions-panel">
+          <div class="panel-header">
+            <span class="panel-icon">◎</span>
+            <span>Gesture Guide</span>
+          </div>
+          <ul class="gesture-list">
+            <li>
+              <div class="gesture-icon pinch-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                  <ellipse
+                    cx="14"
+                    cy="10"
+                    rx="3"
+                    ry="4"
+                    stroke="var(--accent)"
+                    stroke-width="1.5"
+                    fill="none"
+                  />
+                  <ellipse
+                    cx="20"
+                    cy="12"
+                    rx="2"
+                    ry="3.5"
+                    stroke="var(--accent)"
+                    stroke-width="1.2"
+                    fill="none"
+                    transform="rotate(-15 20 12)"
+                  />
+                  <line
+                    x1="14"
+                    y1="14"
+                    x2="20"
+                    y2="15.5"
+                    stroke="var(--accent)"
+                    stroke-width="1"
+                    stroke-dasharray="2 1"
+                  />
+                </svg>
+              </div>
+              <div>
+                <strong>Pinch</strong>
+                <span>Thumb + Index close → Draw</span>
+              </div>
+            </li>
+            <li>
+              <div class="gesture-icon open-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                  <line
+                    x1="7"
+                    y1="22"
+                    x2="7"
+                    y2="12"
+                    stroke="var(--accent-2)"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                  <line
+                    x1="11"
+                    y1="22"
+                    x2="11"
+                    y2="8"
+                    stroke="var(--accent-2)"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                  <line
+                    x1="15"
+                    y1="22"
+                    x2="15"
+                    y2="7"
+                    stroke="var(--accent-2)"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                  <line
+                    x1="19"
+                    y1="22"
+                    x2="19"
+                    y2="9"
+                    stroke="var(--accent-2)"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                  <line
+                    x1="23"
+                    y1="22"
+                    x2="23"
+                    y2="13"
+                    stroke="var(--accent-2)"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                </svg>
+              </div>
+              <div>
+                <strong>Open Hand</strong>
+                <span>All fingers spread → Stop</span>
+              </div>
+            </li>
+            <li>
+              <div class="gesture-icon fist-icon">
+                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                  <rect
+                    x="7"
+                    y="12"
+                    width="14"
+                    height="10"
+                    rx="3"
+                    stroke="var(--danger)"
+                    stroke-width="1.5"
+                    fill="none"
+                  />
+                  <line
+                    x1="7"
+                    y1="16"
+                    x2="21"
+                    y2="16"
+                    stroke="var(--danger)"
+                    stroke-width="1"
+                    opacity="0.5"
+                  />
+                </svg>
+              </div>
+              <div>
+                <strong>Fist</strong>
+                <span>Closed hand → Clear canvas</span>
+              </div>
+            </li>
+          </ul>
+          <div class="panel-footer">
+            <span class="panel-tip">💡 Tip: Keep hand 30–60cm from camera</span>
+          </div>
+        </aside>
+
+        <!-- ─── Toolbar (bottom) ─── -->
+        <div id="toolbar">
+          <!-- Color Palette -->
+          <div class="tool-group" id="color-group">
+            <label class="tool-label">COLOR</label>
+            <div class="color-swatches">
+              <button
+                class="swatch active"
+                data-color="#00E5FF"
+                style="--c: #00e5ff"
+                title="Cyan"
+              ></button>
+              <button
+                class="swatch"
+                data-color="#FF3E6C"
+                style="--c: #ff3e6c"
+                title="Rose"
+              ></button>
+              <button
+                class="swatch"
+                data-color="#ADFF2F"
+                style="--c: #adff2f"
+                title="Lime"
+              ></button>
+              <button
+                class="swatch"
+                data-color="#FF9F1C"
+                style="--c: #ff9f1c"
+                title="Orange"
+              ></button>
+              <button
+                class="swatch"
+                data-color="#BF5AF2"
+                style="--c: #bf5af2"
+                title="Violet"
+              ></button>
+              <button
+                class="swatch"
+                data-color="#FFFFFF"
+                style="--c: #ffffff"
+                title="White"
+              ></button>
+              <input
+                type="color"
+                id="custom-color"
+                value="#00E5FF"
+                title="Custom color"
+              />
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="tool-divider"></div>
+
+          <!-- Brush Size -->
+          <div class="tool-group" id="brush-group">
+            <label class="tool-label">BRUSH</label>
+            <div class="brush-controls">
+              <input type="range" id="brush-size" min="2" max="30" value="6" />
+              <span id="brush-size-label">6px</span>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="tool-divider"></div>
+
+          <!-- Smoothing -->
+          <div class="tool-group" id="smooth-group">
+            <label class="tool-label">SMOOTH</label>
+            <div class="smooth-toggles">
+              <button class="tag-btn active" data-smooth="movingAvg">
+                Avg
+              </button>
+              <button class="tag-btn" data-smooth="kalman">Kalman</button>
+              <button class="tag-btn" data-smooth="none">Raw</button>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="tool-divider"></div>
+
+          <!-- Speed Thickness Toggle -->
+          <div class="tool-group" id="speed-group">
+            <label class="tool-label">DYN SIZE</label>
+            <button
+              id="toggle-dynamic"
+              class="toggle-btn active"
+              title="Dynamic stroke thickness based on speed"
+            >
+              <span class="toggle-track">
+                <span class="toggle-thumb"></span>
+              </span>
+            </button>
+          </div>
+
+          <!-- Divider -->
+          <div class="tool-divider"></div>
+
+          <!-- Actions -->
+          <div class="tool-group" id="action-group">
+            <label class="tool-label">ACTIONS</label>
+            <div class="action-btns">
+              <button id="undo-btn" class="icon-btn" title="Undo (Ctrl+Z)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M2 6h7a4 4 0 0 1 0 8H5"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    d="M2 3L5 6 2 9"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <button id="redo-btn" class="icon-btn" title="Redo (Ctrl+Y)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M14 6H7a4 4 0 0 0 0 8h4"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    d="M14 3l-3 3 3 3"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
+                id="clear-btn"
+                class="icon-btn danger"
+                title="Clear Canvas"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M2 4h12M6 4V3h4v1M5 4l.5 9h5l.5-9"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
+                id="save-btn"
+                class="icon-btn success"
+                title="Save as PNG"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M8 2v8M5 7l3 3 3-3"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M2 12v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <!-- /toolbar -->
+
+        <!-- ─── Metrics Panel (bottom-right overlay) ─── -->
+        <div id="metrics-panel">
+          <div class="metrics-title">◈ Metrics</div>
+          <div class="metric-row">
+            <span>Strokes</span><span id="m-strokes">0</span>
+          </div>
+          <div class="metric-row">
+            <span>Points</span><span id="m-points">0</span>
+          </div>
+          <div class="metric-row">
+            <span>Gesture Switches</span><span id="m-gestures">0</span>
+          </div>
+          <div class="metric-row">
+            <span>Avg Confidence</span><span id="m-confidence">--</span>
+          </div>
+          <div class="metric-row">
+            <span>Smoothing</span><span id="m-smooth">movingAvg</span>
+          </div>
+          <div class="metric-row">
+            <span>Session Time</span><span id="m-time">0:00</span>
+          </div>
+        </div>
+
+        <!-- Camera error overlay -->
+        <div id="camera-error" class="camera-error hidden">
+          <div class="error-box">
+            <div class="error-icon">⚠</div>
+            <h2>Camera Access Required</h2>
+            <p id="error-message">
+              Please allow camera access and reload the page.
+            </p>
+            <button id="retry-btn" class="btn-launch">Retry</button>
+          </div>
+        </div>
+
+        <!-- Loading overlay -->
+        <div id="loading-overlay" class="loading-overlay">
+          <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div id="loading-text">Initializing MediaPipe Hands…</div>
+            <div class="loading-bar-track">
+              <div id="loading-bar" class="loading-bar"></div>
+            </div>
+          </div>
+        </div>
+      </main>
+      <!-- /canvas-area -->
+    </div>
+    <!-- /app -->
+
+    <!-- Main entry point (ES Module) -->
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
