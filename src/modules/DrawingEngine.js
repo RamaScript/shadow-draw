@@ -35,15 +35,17 @@ export class DrawingEngine {
 
     // Stroke buffers
     this._isDrawing = false;
-    this._lastPoint = null; // smoothed position
-    this._rawPoint = null; // latest raw position
-    this._prevRawPoint = null; // for velocity calc
+    this._lastPoint = null;
+    this._rawPoint = null;
+    this._prevRawPoint = null;
     this._lastTimestamp = 0;
 
-    // Undo / Redo
+    // Undo / Redo - memory-aware
     this._maxUndo = opts.maxUndoSteps ?? 30;
+    this._maxUndoMemoryMB = 64;
     this._undoStack = [];
     this._redoStack = [];
+    this._totalUndoMemory = 0;
 
     // Stats for MetricsLogger integration
     this._pointsDrawn = 0;
@@ -360,11 +362,22 @@ export class DrawingEngine {
       this._canvas.width,
       this._canvas.height,
     );
+
+    const snapshotSizeMB = (snapshot.data.byteLength / (1024 * 1024));
+
     this._undoStack.push(snapshot);
+    this._totalUndoMemory += snapshotSizeMB;
 
     // Enforce max undo limit
-    if (this._undoStack.length > this._maxUndo) {
-      this._undoStack.shift();
+    while (this._undoStack.length > this._maxUndo) {
+      const removed = this._undoStack.shift();
+      this._totalUndoMemory -= removed.data.byteLength / (1024 * 1024);
+    }
+
+    // Enforce memory budget
+    while (this._totalUndoMemory > this._maxUndoMemoryMB && this._undoStack.length > 1) {
+      const removed = this._undoStack.shift();
+      this._totalUndoMemory -= removed.data.byteLength / (1024 * 1024);
     }
 
     // Any new draw action invalidates the redo stack

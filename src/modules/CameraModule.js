@@ -3,7 +3,8 @@
  * ─────────────────────────────────────────────────────────────────────
  * Manages webcam access via WebRTC getUserMedia.
  * Responsible for: stream acquisition, video element binding,
- * resolution targeting, error classification, and teardown.
+ * resolution targeting, error classification, fallback strategies,
+ * and teardown.
  * ─────────────────────────────────────────────────────────────────────
  */
 
@@ -25,10 +26,12 @@ export class CameraModule {
         width: { ideal: opts.width ?? 1280 },
         height: { ideal: opts.height ?? 720 },
         frameRate: { ideal: opts.frameRate ?? 30 },
-        facingMode: "user", // front camera on mobile
+        facingMode: "user",
       },
       audio: false,
     };
+
+    this._fallbackAttempted = false;
 
     /** Callbacks */
     this.onError = null;
@@ -41,15 +44,14 @@ export class CameraModule {
 
   /**
    * Request camera permission and start the video stream.
+   * Falls back to minimal constraints on OverconstrainedError.
    * @returns {Promise<void>}
    */
   async start() {
     if (this._isRunning) return;
 
     try {
-      this._stream = await navigator.mediaDevices.getUserMedia(
-        this._constraints,
-      );
+      this._stream = await this._getUserMediaWithFallback(this._constraints);
 
       this._video.srcObject = this._stream;
 
@@ -102,6 +104,33 @@ export class CameraModule {
      ───────────────────────────── */
 
   /**
+   * Attempt getUserMedia with fallback strategy:
+   * 1. Try the requested constraints
+   * 2. On OverconstrainedError, try minimal constraints (no width/height/frameRate)
+   * 3. On any other failure, try basic {video:true} as last resort
+   */
+  async _getUserMediaWithFallback(constraints) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      if (err.name === "OverconstrainedError" && !this._fallbackAttempted) {
+        this._fallbackAttempted = true;
+        const fallbackConstraints = {
+          video: { facingMode: "user" },
+          audio: false,
+        };
+        return await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+      }
+      if (!this._fallbackAttempted) {
+        this._fallbackAttempted = true;
+        const lastResort = { video: true, audio: false };
+        return await navigator.mediaDevices.getUserMedia(lastResort);
+      }
+      throw err;
+    }
+  }
+
+  /**
    * Classify a getUserMedia error into a human-readable message.
    * @param {Error} err
    * @returns {string}
@@ -121,8 +150,13 @@ export class CameraModule {
         return "Camera does not meet the required constraints. Trying with relaxed settings.";
       case "NotSupportedError":
         return "Camera access is not supported in this browser. Try Chrome or Firefox.";
+      case "AbortError":
+        return "Camera access was aborted. Please try again.";
       default:
-        return `Camera error: ${err.message}`;
+        if (err.message?.includes("gUM") || err.message?.includes("getUserMedia")) {
+          return "Camera access is not available in this environment. Ensure you are using HTTPS or localhost.";
+        }
+        return `Camera error: ${err.message || "Unknown error"}`;
     }
   }
 }

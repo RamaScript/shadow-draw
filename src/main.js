@@ -35,11 +35,15 @@ import { formatTime } from "./utils/MathUtils.js";
    ══════════════════════════════════════════════════════════ */
 class ShadowDrawApp {
   constructor() {
-    // DOM references
+    // DOM references with validation
     this._videoEl = document.getElementById("webcam-video");
     this._canvasEl = document.getElementById("drawing-canvas");
     this._app = document.getElementById("app");
     this._splash = document.getElementById("splash-screen");
+
+    if (!this._videoEl || !this._canvasEl || !this._app || !this._splash) {
+      throw new Error("Required DOM elements not found. Ensure index.html has all elements with correct IDs.");
+    }
 
     // Module instances
     this._camera = new CameraModule(this._videoEl);
@@ -57,10 +61,18 @@ class ShadowDrawApp {
     this._prevGesture = Gesture.UNKNOWN;
     this._handVisible = false;
     this._metricsInterval = null;
+    this._fpsWarned = false;
 
     // Frame timing
     this._lastFrameTime = 0;
     this._rafId = null;
+
+    // Resize observer for responsive canvas
+    this._resizeObserver = null;
+
+    // Cleanup on page unload
+    this._boundDestroy = this.destroy.bind(this);
+    window.addEventListener("beforeunload", this._boundDestroy);
   }
 
   /* ─────────────────────────────
@@ -69,73 +81,99 @@ class ShadowDrawApp {
 
   /** Initialize the entire system. Called from splash screen. */
   async boot() {
-    // Show app, hide splash
-    this._splash.style.display = "none";
-    this._app.classList.remove("hidden");
+    try {
+      // Show app, hide splash
+      this._splash.style.display = "none";
+      this._app.classList.remove("hidden");
 
-    // Set up UI callbacks before anything else
-    this._wireUICallbacks();
-    this._ui.init();
+      // Set up UI callbacks before anything else
+      this._wireUICallbacks();
+      this._ui.init();
+      this._bindKeyboard();
 
-    // Loading stage 1: Camera
-    this._ui.setLoadingText("Requesting camera access…");
-    this._ui.setLoadingProgress(10);
+      // Loading stage 1: Camera
+      this._ui.setLoadingText("Requesting camera access…");
+      this._ui.setLoadingProgress(10);
 
-    await this._startCamera();
+      await this._startCamera();
 
-    // Loading stage 2: MediaPipe
-    this._ui.setLoadingText("Loading MediaPipe Hands model…");
-    this._ui.setLoadingProgress(35);
+      // Loading stage 2: MediaPipe
+      this._ui.setLoadingText("Loading MediaPipe Hands model…");
+      this._ui.setLoadingProgress(35);
 
-    await this._startTracking();
+      await this._startTracking();
 
-    // Loading stage 3: Canvas
-    this._ui.setLoadingText("Initializing drawing engine…");
-    this._ui.setLoadingProgress(80);
-    this._drawing.resize();
-
-    // Loading stage 4: Done
-    this._ui.setLoadingProgress(100);
-    this._ui.setLoadingText("System ready!");
-
-    setTimeout(() => {
-      this._ui.hideLoading();
-      this._startMetricsLoop();
-      this._ui.toast(
-        "System ready — raise your hand to begin!",
-        "success",
-        3000,
-      );
-    }, 400);
-
-    // Resize canvas on window resize
-    window.addEventListener("resize", () => {
+      // Loading stage 3: Canvas
+      this._ui.setLoadingText("Initializing drawing engine…");
+      this._ui.setLoadingProgress(80);
       this._drawing.resize();
-    });
+
+      // Loading stage 4: Done
+      this._ui.setLoadingProgress(100);
+      this._ui.setLoadingText("System ready!");
+
+      setTimeout(() => {
+        this._ui.hideLoading();
+        this._startMetricsLoop();
+        this._ui.toast(
+          "System ready — raise your hand to begin!",
+          "success",
+          3000,
+        );
+      }, 400);
+
+      // ResizeObserver for responsive canvas
+      this._resizeObserver = new ResizeObserver(() => {
+        this._drawing.resize();
+      });
+      this._resizeObserver.observe(this._canvasEl);
+    } catch (err) {
+      // Ensure cleanup on any error during boot
+      await this._cleanupOnError();
+      console.error("[ShadowDraw] Boot failed:", err);
+      this._ui.hideLoading();
+      if (err.message && err.message.includes("DOM elements")) {
+        // Only reload for missing DOM elements — these are fatal
+        this._ui.showCameraError(
+          `System initialization failed: ${err.message}`,
+          () => window.location.reload(),
+        );
+      } else {
+        this._ui.showCameraError(
+          `System initialization failed: ${err.message}. Try again or reload.`,
+          () => {
+            this._recover();
+          },
+        );
+      }
+    }
   }
 
   /* ─────────────────────────────
      CAMERA SETUP
      ───────────────────────────── */
 
-  async _startCamera() {
-    return new Promise((resolve) => {
-      this._camera.onReady = resolve;
-      this._camera.onError = (msg, err) => {
-        console.error("[Camera]", err);
-        this._ui.hideLoading();
-        this._ui.showCameraError(msg, () => window.location.reload());
-      };
-      this._camera.start();
-    });
-  }
+   async _startCamera() {
+     return new Promise((resolve, reject) => {
+       this._camera.onReady = resolve;
+       this._camera.onError = (msg, err) => {
+         console.error("[Camera]", err);
+         this._ui.hideLoading();
+         this._ui.showCameraError(msg, () => {
+           this._recover();
+         });
+         reject(new Error(msg));
+       };
+       this._camera.start();
+     });
+   }
 
   /* ─────────────────────────────
      HAND TRACKING SETUP
      ───────────────────────────── */
 
   async _startTracking() {
-    return new Promise(async (resolve) => {
+    return new Promise(async (resolve, reject) => {
       this._tracking.onReady = () => {
         console.log("[HandTracking] Model ready");
         resolve();
@@ -146,8 +184,11 @@ class ShadowDrawApp {
         this._ui.hideLoading();
         this._ui.showCameraError(
           "Failed to initialize MediaPipe Hands. Check your internet connection.",
-          () => window.location.reload(),
+          () => {
+            this._recover();
+          },
         );
+        reject(new Error("Failed to initialize MediaPipe Hands. Check your internet connection."));
       };
 
       // Wire up the results callback
@@ -155,6 +196,29 @@ class ShadowDrawApp {
 
       await this._tracking.init(this._videoEl);
     });
+  }
+
+  /* ─────────────────────────────
+     RECOVERY
+     Attempt to reinitialize without full page reload
+     ───────────────────────────── */
+
+  async _recover() {
+    console.log("[ShadowDraw] Attempting recovery...");
+    await this._cleanupOnError();
+    this._ui.hideCameraError();
+    this._ui.toast("Reinitializing system...", "info", 2000);
+    // Reinitialize modules
+    this._camera = new CameraModule(this._videoEl);
+    this._tracking = new HandTrackingModule({ modelComplexity: 1 });
+    this._gesture = new GestureRecognitionModule();
+    this._prevGesture = Gesture.UNKNOWN;
+    this._handVisible = false;
+    this._filter = createFilter(FilterTypes.MOVING_AVG);
+    this._smoothType = FilterTypes.MOVING_AVG;
+
+    // Reboot
+    await this.boot();
   }
 
   /* ─────────────────────────────
@@ -322,9 +386,84 @@ class ShadowDrawApp {
   }
 
   /* ─────────────────────────────
-     METRICS LOOP
-     Updates the metrics panel every second
+     CENTRALIZED KEYBOARD SHORTCUTS
      ───────────────────────────── */
+
+  _bindKeyboard() {
+    document.addEventListener("keydown", (e) => {
+      // Ignore when user is typing in an input
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) return;
+
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case "z":
+            e.preventDefault();
+            this._ui.onUndo?.();
+            break;
+          case "y":
+            e.preventDefault();
+            this._ui.onRedo?.();
+            break;
+          case "s":
+            e.preventDefault();
+            this._ui.onSave?.();
+            break;
+        }
+        return;
+      }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        this._triggerClear();
+      }
+    });
+  }
+
+   /* ─────────────────────────────
+      ERROR CLEANUP
+      ───────────────────────────── */
+
+/**
+     * Cleanup resources when boot encounters an error
+     */
+   async _cleanupOnError() {
+     // Stop camera if running
+     if (this._camera?.isRunning) {
+       this._camera.stop();
+     }
+     
+     // Stop tracking if initialized
+     if (this._tracking?.isReady) {
+       try {
+         await this._tracking.stop();
+       } catch (err) {
+         console.warn("[ShadowDraw] Tracking stop error:", err);
+       }
+     }
+     
+     // Clear intervals
+     if (this._metricsInterval) {
+       clearInterval(this._metricsInterval);
+       this._metricsInterval = null;
+     }
+     
+     // Cancel animation frame if scheduled
+     if (this._rafId) {
+       cancelAnimationFrame(this._rafId);
+       this._rafId = null;
+     }
+
+     // Disconnect ResizeObserver
+     if (this._resizeObserver) {
+       this._resizeObserver.disconnect();
+       this._resizeObserver = null;
+     }
+   }
+
+   /* ─────────────────────────────
+      METRICS LOOP
+      Updates the metrics panel every second
+      ───────────────────────────── */
 
   _startMetricsLoop() {
     this._metricsInterval = setInterval(() => {
@@ -336,7 +475,52 @@ class ShadowDrawApp {
         smooth: this._smoothType,
         sessionTime: formatTime(this._metrics.sessionDurationMs),
       });
+
+      // Performance warning if FPS drops below threshold
+      if (this._metrics.fps < 15 && this._metrics.fps > 0) {
+        if (!this._fpsWarned) {
+          this._fpsWarned = true;
+          this._ui.toast(
+            "Low FPS detected. Try reducing model complexity or closing other apps.",
+            "error",
+            4000,
+          );
+        }
+      } else {
+        this._fpsWarned = false;
+      }
     }, 1000);
+  }
+
+  /**
+   * Destroy the application and release all resources.
+   * Called automatically on page unload.
+   */
+  destroy() {
+    this._camera?.stop();
+
+    if (this._tracking?.isReady) {
+      this._tracking.stop().catch((err) => {
+        console.warn("[ShadowDraw] Tracking stop error:", err);
+      });
+    }
+
+    if (this._metricsInterval) {
+      clearInterval(this._metricsInterval);
+      this._metricsInterval = null;
+    }
+
+    if (this._rafId) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+
+    window.removeEventListener("beforeunload", this._boundDestroy);
   }
 }
 

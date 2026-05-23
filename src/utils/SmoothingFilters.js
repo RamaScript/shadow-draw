@@ -2,7 +2,8 @@
  * SmoothingFilters.js — ShadowDraw
  * ─────────────────────────────────────────────────────────────────────
  * Implements multiple smoothing strategies for hand tracking coordinates.
- * Research comparison: Moving Average vs. Kalman Filter vs. Raw input.
+ * Research comparison: Moving Average vs. Exponential Moving Average vs.
+ * Kalman Filter vs. Raw input.
  *
  * Design: Each filter class exposes a uniform `.filter(point)` interface
  * so they are trivially swappable in the drawing pipeline.
@@ -30,18 +31,23 @@ export class MovingAverageFilter {
    * @returns {{x:number, y:number}} smoothed point
    */
   filter(point) {
-    this.bufferX.push(point.x);
-    this.bufferY.push(point.y);
+    this.bufferX[this.bufferX.length] = point.x;
+    this.bufferY[this.bufferY.length] = point.y;
 
     if (this.bufferX.length > this.windowSize) {
       this.bufferX.shift();
       this.bufferY.shift();
     }
 
-    const avgX = this.bufferX.reduce((s, v) => s + v, 0) / this.bufferX.length;
-    const avgY = this.bufferY.reduce((s, v) => s + v, 0) / this.bufferY.length;
+    const len = this.bufferX.length;
+    let sumX = 0;
+    let sumY = 0;
+    for (let i = 0; i < len; i++) {
+      sumX += this.bufferX[i];
+      sumY += this.bufferY[i];
+    }
 
-    return { x: avgX, y: avgY };
+    return { x: sumX / len, y: sumY / len };
   }
 
   /** Reset the filter state (e.g., on gesture change). */
@@ -51,13 +57,52 @@ export class MovingAverageFilter {
   }
 
   setWindowSize(size) {
-    this.windowSize = size;
+    this.windowSize = Math.max(1, size);
     this.reset();
   }
 }
 
 /* ═══════════════════════════════════════════════════════════
-   2. 1D KALMAN FILTER — applied independently per axis
+   2. EXPONENTIAL MOVING AVERAGE (EMA) FILTER
+   Weighted average where older samples decay exponentially.
+   More responsive than simple moving average with less jitter.
+   Alpha controls the smoothing factor (0 = max smooth, 1 = raw).
+   ═══════════════════════════════════════════════════════════ */
+export class EMAFilter {
+  /**
+   * @param {number} alpha - Smoothing factor [0,1]. Lower = smoother (default 0.3)
+   */
+  constructor(alpha = 0.3) {
+    this.alpha = alpha;
+    this._valueX = null;
+    this._valueY = null;
+  }
+
+  filter(point) {
+    if (this._valueX === null) {
+      this._valueX = point.x;
+      this._valueY = point.y;
+      return { x: point.x, y: point.y };
+    }
+
+    this._valueX = this.alpha * point.x + (1 - this.alpha) * this._valueX;
+    this._valueY = this.alpha * point.y + (1 - this.alpha) * this._valueY;
+
+    return { x: this._valueX, y: this._valueY };
+  }
+
+  reset() {
+    this._valueX = null;
+    this._valueY = null;
+  }
+
+  setAlpha(alpha) {
+    this.alpha = Math.max(0, Math.min(1, alpha));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   3. 1D KALMAN FILTER — applied independently per axis
    Optimally estimates the true position by balancing between
    prediction (process model) and measurement. Lower noise,
    faster response than moving average for similar lag.
@@ -72,29 +117,24 @@ class KalmanFilter1D {
    * @param {number} Q - Process noise covariance (higher = faster adaptation)
    */
   constructor(R = 0.008, Q = 0.1) {
-    this.R = R; // measurement noise
-    this.Q = Q; // process noise
-    this.P = 1; // estimate error covariance
-    this.x = null; // state estimate (null = uninitialized)
+    this.R = R;
+    this.Q = Q;
+    this.P = 1;
+    this.x = null;
   }
 
   filter(measurement) {
-    // Initialize on first measurement
     if (this.x === null) {
       this.x = measurement;
       return measurement;
     }
 
-    // Prediction step
     this.P = this.P + this.Q;
 
-    // Update (Kalman Gain)
     const K = this.P / (this.P + this.R);
 
-    // State estimate update
     this.x = this.x + K * (measurement - this.x);
 
-    // Error covariance update
     this.P = (1 - K) * this.P;
 
     return this.x;
@@ -146,12 +186,12 @@ export class KalmanFilter2D {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   3. NO-OP (PASSTHROUGH) FILTER
+   4. NO-OP (PASSTHROUGH) FILTER
    Returns raw coordinates — baseline for comparison studies.
    ═══════════════════════════════════════════════════════════ */
 export class NoOpFilter {
   filter(point) {
-    return { ...point };
+    return { x: point.x, y: point.y };
   }
   reset() {}
 }
@@ -162,6 +202,7 @@ export class NoOpFilter {
    ═══════════════════════════════════════════════════════════ */
 export const FilterTypes = {
   MOVING_AVG: "movingAvg",
+  EMA: "ema",
   KALMAN: "kalman",
   NONE: "none",
 };
@@ -169,12 +210,14 @@ export const FilterTypes = {
 /**
  * Create a filter instance by strategy name.
  * @param {string} type - One of FilterTypes values
- * @returns {MovingAverageFilter|KalmanFilter2D|NoOpFilter}
+ * @returns {MovingAverageFilter|EMAFilter|KalmanFilter2D|NoOpFilter}
  */
 export function createFilter(type) {
   switch (type) {
     case FilterTypes.KALMAN:
       return new KalmanFilter2D();
+    case FilterTypes.EMA:
+      return new EMAFilter(0.35);
     case FilterTypes.NONE:
       return new NoOpFilter();
     case FilterTypes.MOVING_AVG:

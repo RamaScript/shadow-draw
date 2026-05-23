@@ -81,7 +81,6 @@ export class UILayer {
     this._bindSmoothToggles();
     this._bindDynamicToggle();
     this._bindActionButtons();
-    this._bindKeyboard();
   }
 
   /* ─────────────────────────────
@@ -112,9 +111,24 @@ export class UILayer {
     if (this.$cameraError) this.$cameraError.classList.remove("hidden");
     if (this.$errorMessage) this.$errorMessage.textContent = message;
     const retryBtn = document.getElementById("retry-btn");
-    if (retryBtn && onRetry) {
-      retryBtn.onclick = onRetry;
+    if (retryBtn) {
+      if (onRetry) {
+        retryBtn.onclick = () => {
+          this.hideCameraError();
+          onRetry();
+        };
+        retryBtn.textContent = "Retry";
+        retryBtn.classList.remove("hidden");
+      } else {
+        retryBtn.onclick = () => window.location.reload();
+        retryBtn.textContent = "Reload Page";
+        retryBtn.classList.remove("hidden");
+      }
     }
+  }
+
+  hideCameraError() {
+    if (this.$cameraError) this.$cameraError.classList.add("hidden");
   }
 
   /* ─────────────────────────────
@@ -303,25 +317,4 @@ export class UILayer {
     this.$saveBtn?.addEventListener("click", () => this.onSave?.());
   }
 
-  _bindKeyboard() {
-    document.addEventListener("keydown", (e) => {
-      if (e.ctrlKey || e.metaKey) {
-        if (e.key === "z") {
-          e.preventDefault();
-          this.onUndo?.();
-        }
-        if (e.key === "y") {
-          e.preventDefault();
-          this.onRedo?.();
-        }
-        if (e.key === "s") {
-          e.preventDefault();
-          this.onSave?.();
-        }
-      }
-      if (e.key === "Delete" || e.key === "Backspace") {
-        if (e.target === document.body) this.onClear?.();
-      }
-    });
   }
-}
